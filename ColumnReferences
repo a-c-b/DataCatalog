@@ -1,0 +1,81 @@
+/* code base is SQL Server */
+
+
+CREATE view [DataCatalog].[V_ReferencingObjectsColumnInfo] as
+with
+	base as (
+		select 
+			b.object_id,
+			a.referencing_id,
+			column_id,
+			b.referenced_major_id,
+			b.referenced_minor_id,
+			referenced_schema_name,
+			referenced_entity_name
+
+		from [sys].[sql_expression_dependencies] a left join [sys].[sql_dependencies] b
+		on a.referencing_id = b.object_id and a.referenced_id = b.referenced_major_id
+		--where a.referencing_id = '65435307'
+		)
+		-- Only going to work with Non-system schema
+		,GetSchema as (select * from [sys].[schemas]  (NOLOCK) where schema_id not in (3, 4)
+		)
+		
+		-- get the Views, tables, and stored procedures built in the database along with their key identifiers
+		,GetData as (
+			select 
+				a.name as Object_Name, b.name as Schema_Name, 
+				type_desc as Type_Description, type,
+				object_id, a.Schema_id,  parent_object_id, CREATE_DATE, modify_date 
+			from [sys].[all_objects] a, GetSchema b
+			where a.schema_id =b.schema_id 
+								)
+	,ReferencingInfo as (
+		select 
+			--a.OBJECT_ID, 
+			referencing_id, 
+			Schema_Name as ReferencingSchema, Object_Name as ReferencingObject, 
+			Type_Description as ReferencingTypeDescription, CREATE_DATE as ReferencingALTERDate, modify_date as ReferencyModifyDate, type as ReferencingType, 
+			column_id as ReferencingColumnId, 
+			referenced_major_id, referenced_minor_id, referenced_schema_name, referenced_entity_name
+			
+
+		from base a left join GetData b
+		on a.referencing_id = b.object_id 
+		)
+		,columninfo as (
+		select 
+		--a.OBJECT_ID, 
+			referencing_id, 
+			ReferencingSchema,  ReferencingObject, 
+			 ReferencingTypeDescription,  ReferencingType, ReferencingALTERDate,  ReferencyModifyDate, 
+			ReferencingColumnId, 
+			 referenced_schema_name, referenced_entity_name, 
+			referenced_major_id, referenced_minor_id,b.ORDINAL_POSITION, b.COLUMN_NAME, b.CHARACTER_MAXIMUM_LENGTH,
+			b.NUMERIC_PRECISION, b.NUMERIC_PRECISION_RADIX
+		
+		from  ReferencingInfo a left join [INFORMATION_SCHEMA].[COLUMNS]  (NOLOCK) b
+		on a.referenced_schema_name = b.TABLE_SCHEMA and a.referenced_entity_name = b.TABLE_NAME and a.referenced_minor_id = b.ORDINAL_POSITION
+		)
+		,ReferencedDetails as (
+		select
+			referencing_id, 
+			ReferencingSchema,  ReferencingObject, 
+			ReferencingTypeDescription,  ReferencingType,  ReferencingALTERDate,  ReferencyModifyDate,
+			ReferencingColumnId, 
+			 referenced_schema_name, referenced_entity_name, 
+			 Type_Description as ReferencedTypeDescription, type as ReferencedType,
+			 CREATE_DATE as ReferencedALTERDate, modify_date as ReferencedModifyDate,
+			referenced_major_id, --referenced_minor_id,
+			ORDINAL_POSITION, COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH,
+			NUMERIC_PRECISION, NUMERIC_PRECISION_RADIX
+
+		from columninfo a left join GetData b
+		on a.referenced_major_id = b.object_id
+		) 
+
+		select 
+		format(dateadd(hour, -7, getdate()), 'MM/dd/yyyy HH:mm')  as PullDate,
+		* from ReferencedDetails 
+		where ORDINAL_POSITION is not null and ReferencingObject not like 'sp_%'
+		--order by ReferencingSchema, ReferencingObject, referenced_schema_name, referenced_entity_name, ORDINAL_POSITION 
