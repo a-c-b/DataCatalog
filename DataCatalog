@@ -1,0 +1,32 @@
+/* This is coded in SQL Server for Azure */
+
+
+
+CREATE view  [DataCatalog].[V_TablesProceduresViews] as
+
+	with 
+		
+		-- Only going to work with Non-system schema
+		GetSchema as (select * from [sys].[schemas] where schema_id not in (3, 4)
+		)
+		
+		-- get the Views, tables, and stored procedures built in the database along with their key identifiers
+		,GetData as (
+			select object_id, b.name as Schema_Name,
+				a.name as Object_Name, 
+				type_desc as Type_Description, type,
+				 a.Schema_id,  parent_object_id, CREATE_DATE, modify_date 
+			from [sys].[all_objects]  (NOLOCK) a, GetSchema b
+			where a.schema_id =b.schema_id
+							)
+		select 
+		format(dateadd(hour, -7, getdate()), 'MM/dd/yyyy HH:mm')  as PullDate,
+		SCHEMA_ID,object_id, Schema_Name, Object_Name, concat(Schema_Name,'.',Object_Name) as FullObject_Name, type, Type_Description, 
+		CREATE_DATE, modify_date 
+		
+		from GetData
+		where type <> 'SQ'  
+		and Object_Name not in 
+		('fn_diagramobjects', 'sp_alterdiagram','sp_ALTERdiagram', 'sp_dropdiagram', 'sp_helpdiagramdefinition', 'sp_helpdiagrams', 'sp_renamediagram', 'sp_upgraddiagrams')
+		
+		
